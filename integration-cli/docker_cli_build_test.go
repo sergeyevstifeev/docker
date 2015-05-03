@@ -5293,3 +5293,58 @@ func (s *DockerSuite) TestBuildEmptyStringVolume(c *check.C) {
 	}
 
 }
+
+func TestBuildWithFilesInNonExistingFolder(c *check.C) {
+	name := "testbuildwithfilesinnonexistingfolder"
+	defer deleteImages(name)
+
+	currentDir, err := os.Getwd()
+	if err != nil {
+		c.Fatalf("failed to fetch current directory")
+	}
+
+	tempDir, err := ioutil.TempDir(currentDir, name)
+	if err != nil {
+		c.Fatalf("failed to create temporary directory: %s", tempDir)
+	}
+	defer os.RemoveAll(tempDir)
+
+	tempFile1, err := ioutil.TempFile(tempDir, "testfile1")
+	if (err != nil) {
+		c.Fatalf("failed to create temporary file: %s", tempFile1)
+	}
+	tempFile2, err := ioutil.TempFile(tempDir, "testfile2")
+	if (err != nil) {
+		c.Fatalf("failed to create temporary file: %s", tempFile1)
+	}
+
+	files, _ := ioutil.ReadDir("/tmp")
+    for _, f := range files {
+		fmt.Println(f.Name())
+    }
+
+	fmt.Println("%s, %s, %s", tempDir, tempFile1.Name(), tempFile2.Name())
+
+	dockerFileContents := fmt.Sprintf(`
+  FROM busybox
+  COPY %s /nonexistingfolder/
+  COPY %s /nonexistingfolder/
+  `, strings.Replace(tempFile1.Name(),currentDir,"",-1), strings.Replace(tempFile2.Name(),currentDir,"",-1))
+	fmt.Println("Dockerfile contents: '", dockerFileContents, "'")
+	_, err = buildImage(name, dockerFileContents, false)
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	out, _, err := runCommandWithOutput(exec.Command(dockerBinary, "run", "-t", "ls", "-ld", fmt.Println("/nonexistingfolder/%s", tempFile1.Name()), "|", "awk", "'{print $4}'", name))
+
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	if out != 'root' {
+		c.Fatal('The folder should be owned by root')
+	}
+
+	logDone("build - two files in non existing folder")
+}
